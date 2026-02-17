@@ -1,0 +1,182 @@
+{% comment %}
+  Review Snippet App Block
+  Displays a short text review snippet for the current product.
+  Data is fetched from the app backend via a proxy route.
+{% endcomment %}
+
+{%- if request.page_type == 'product' and product -%}
+  <div id="review-snippet-{{ section.id }}" class="review-snippet-app-block">
+    <div
+      class="review-snippet-app-block__content"
+      data-product-id="{{ product.admin_graphql_api_id | default: product.id | escape }}"
+    >
+      {{ block.settings.loading_text }}
+    </div>
+  </div>
+
+  <script>
+    (function() {
+      var containerId = 'review-snippet-{{ section.id }}';
+      var contentSelector = '.review-snippet-app-block__content';
+      var showWhenEmpty = {{ block.settings.show_when_empty | json }};
+      var fallbackText = {{ block.settings.fallback_text | json }};
+      var timeoutId = null;
+      var requestCompleted = false;
+
+      function updateContent(text, hide) {
+        var container = document.getElementById(containerId);
+        if (!container) return;
+        
+        var contentEl = container.querySelector(contentSelector);
+        if (!contentEl) return;
+
+        if (hide) {
+          container.style.display = 'none';
+        } else {
+          contentEl.textContent = text;
+        }
+        
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+          timeoutId = null;
+        }
+        requestCompleted = true;
+      }
+
+      function makeRequest() {
+        var container = document.getElementById(containerId);
+        if (!container) return;
+
+        var contentEl = container.querySelector(contentSelector);
+        if (!contentEl) return;
+
+        var productId = (contentEl.getAttribute('data-product-id') || '').trim();
+        if (!productId) {
+          updateContent('', true);
+          return;
+        }
+
+        // Ensure we always send an Admin GraphQL-style product GID
+        var productGid = productId.indexOf('gid://') === 0
+          ? productId
+          : 'gid://shopify/Product/' + productId;
+
+        // Build proxy URL
+        var basePath = window.Shopify && window.Shopify.routes
+          ? window.Shopify.routes.root.replace(/\/$/, '')
+          : '';
+        var url = basePath + '/apps/review-snippet?productId=' + encodeURIComponent(productGid);
+
+        console.log('Review snippet: Fetching from', url);
+
+        // Set timeout fallback (5 seconds)
+        timeoutId = setTimeout(function() {
+          if (!requestCompleted) {
+            console.warn('Review snippet: Request timeout');
+            if (showWhenEmpty) {
+              updateContent(fallbackText, false);
+            } else {
+              updateContent('', true);
+            }
+          }
+        }, 5000);
+
+        // Use jQuery if available, otherwise vanilla fetch
+        if (typeof jQuery !== 'undefined') {
+          jQuery.ajax({
+            url: url,
+            method: 'GET',
+            dataType: 'json',
+            timeout: 5000,
+            success: function (data) {
+              console.log('Review snippet: Response received', data);
+              var snippet = (data && data.reviewSnippet ? String(data.reviewSnippet) : '').trim();
+              if (snippet) {
+                updateContent(snippet, false);
+              } else if (showWhenEmpty) {
+                updateContent(fallbackText, false);
+              } else {
+                updateContent('', true);
+              }
+            },
+            error: function (xhr, status, error) {
+              console.warn('Review snippet: AJAX error', status, error);
+              if (showWhenEmpty) {
+                updateContent(fallbackText, false);
+              } else {
+                updateContent('', true);
+              }
+            },
+          });
+        } else {
+          // Fallback to vanilla fetch
+          fetch(url)
+            .then(function(response) {
+              if (!response.ok) throw new Error('HTTP ' + response.status);
+              return response.json();
+            })
+            .then(function(data) {
+              console.log('Review snippet: Response received', data);
+              var snippet = (data && data.reviewSnippet ? String(data.reviewSnippet) : '').trim();
+              if (snippet) {
+                updateContent(snippet, false);
+              } else if (showWhenEmpty) {
+                updateContent(fallbackText, false);
+              } else {
+                updateContent('', true);
+              }
+            })
+            .catch(function(error) {
+              console.warn('Review snippet: Fetch error', error);
+              if (showWhenEmpty) {
+                updateContent(fallbackText, false);
+              } else {
+                updateContent('', true);
+              }
+            });
+        }
+      }
+
+      // Wait for DOM and jQuery (if available)
+      function init() {
+        if (document.readyState === 'loading') {
+          document.addEventListener('DOMContentLoaded', function() {
+            setTimeout(makeRequest, 100);
+          });
+        } else {
+          setTimeout(makeRequest, 100);
+        }
+      }
+
+      init();
+    })();
+  </script>
+{%- endif -%}
+
+{% schema %}
+{
+  "name": "Review snippet app block",
+  "target": "section",
+  "templates": ["product"],
+  "settings": [
+    {
+      "type": "text",
+      "id": "loading_text",
+      "label": "Loading text",
+      "default": "Loading review…"
+    },
+    {
+      "type": "checkbox",
+      "id": "show_when_empty",
+      "label": "Show fallback text when no review snippet is available",
+      "default": false
+    },
+    {
+      "type": "text",
+      "id": "fallback_text",
+      "label": "Fallback text",
+      "default": "No review available yet."
+    }
+  ]
+}
+{% endschema %}

@@ -1,0 +1,13 @@
+name = "review-snippet-block"
+
+uid = "1c4837a2-0366-028d-fb21-a1b4623e9eb750a4b24a"
+
+type = "theme"
+
+[extension]
+name = "Review snippet app block"
+handle = "review-snippet"
+type = "theme"
+runtime_context = "liquid"
+description = "Displays a review snippet for the current product page."
+
